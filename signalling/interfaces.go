@@ -101,6 +101,13 @@ type ConnectParams struct {
 	// are rejected before being added to the ICE agent.
 	IPv6Only bool
 
+	// Warp enables the LiveKit WARP transport optimizations on this client's
+	// SettingEngine: SPED (DTLS-in-STUN, saves a DTLS round-trip) and SCTP SNAP
+	// (SCTP INIT carried in the SDP, saves the data-channel init round-trip).
+	// Requires the SFU to have enable_warp set; otherwise it is ignored and the
+	// connection falls back to the standard handshake.
+	Warp bool
+
 	DTLSEllipticCurves []dtlsElliptic.Curve // FIPS 140: override default DTLS curves
 
 	// DataEncryptionKeyProvider enables data channel E2EE when set.

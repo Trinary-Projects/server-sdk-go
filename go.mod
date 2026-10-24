@@ -142,3 +142,12 @@ require (
 )
 
 tool github.com/maxbrunsfeld/counterfeiter/v6
+
+// WARP support: use the livekit warp-patched Pion forks (same versions as the
+// SFU, livekit 1.13.10) so EnableSped/EnableSctpSnap are available and client
+// <-> SFU WARP negotiation stays interop-aligned.
+replace github.com/pion/webrtc/v4 => github.com/livekit/webrtc-pion/v4 v4.2.18-warp.6
+
+replace github.com/pion/dtls/v3 => github.com/livekit/dtls/v3 v3.1.5-warp.3
+
+replace github.com/pion/ice/v4 => github.com/livekit/ice/v4 v4.4.0-warp.3

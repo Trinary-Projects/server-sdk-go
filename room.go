@@ -195,6 +195,16 @@ func WithIPv6Only() ConnectOption {
 	}
 }
 
+// WithWarp enables the LiveKit WARP transport optimizations (SPED + SCTP SNAP)
+// on this client. It only takes effect when the SFU has enable_warp set; against
+// a non-WARP server the markers are ignored and the connection falls back to the
+// standard WebRTC handshake.
+func WithWarp() ConnectOption {
+	return func(p *connParams) {
+		p.Warp = true
+	}
+}
+
 // WithDisableRegionDiscovery disables automatic region discovery for LiveKit Cloud.
 func WithDisableRegionDiscovery() ConnectOption {
 	return func(p *connParams) {
