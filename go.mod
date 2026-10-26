@@ -35,7 +35,9 @@ require (
 	github.com/mackerelio/go-osstat v0.2.8 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/petermattis/goid v0.0.0-20260820044319-269ab09b5261 // indirect
+	github.com/pion/stun/v3 v3.1.6 // indirect
 	github.com/pion/stun/v4 v4.0.1 // indirect
+	github.com/pion/transport/v4 v4.0.2 // indirect
 	github.com/pion/transport/v5 v5.1.1 // indirect
 	github.com/pion/turn/v5 v5.1.2 // indirect
 	github.com/prometheus/client_golang v1.24.1 // indirect
