@@ -35,7 +35,9 @@ require (
 	github.com/mackerelio/go-osstat v0.2.8 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/petermattis/goid v0.0.0-20260820044319-269ab09b5261 // indirect
+	github.com/pion/stun/v3 v3.1.6 // indirect
 	github.com/pion/stun/v4 v4.0.1 // indirect
+	github.com/pion/transport/v4 v4.0.2 // indirect
 	github.com/pion/transport/v5 v5.1.1 // indirect
 	github.com/pion/turn/v5 v5.1.2 // indirect
 	github.com/prometheus/client_golang v1.24.1 // indirect
@@ -139,3 +141,12 @@ require (
 )
 
 tool github.com/maxbrunsfeld/counterfeiter/v6
+
+// WARP support: use the livekit warp-patched Pion forks (same versions as the
+// SFU, livekit 1.13.10) so EnableSped/EnableSctpSnap are available and client
+// <-> SFU WARP negotiation stays interop-aligned.
+replace github.com/pion/webrtc/v4 => github.com/livekit/webrtc-pion/v4 v4.2.18-warp.6
+
+replace github.com/pion/dtls/v3 => github.com/livekit/dtls/v3 v3.1.5-warp.3
+
+replace github.com/pion/ice/v4 => github.com/livekit/ice/v4 v4.4.0-warp.3

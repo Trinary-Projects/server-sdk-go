@@ -89,6 +89,7 @@ type PCTransportParams struct {
 	IsSender                   bool
 	DTLSEllipticCurves         []dtlsElliptic.Curve
 	IPv6Only                   bool
+	Warp                       bool
 }
 
 func (t *PCTransport) registerDefaultInterceptors(params PCTransportParams, i *interceptor.Registry) error {
@@ -228,6 +229,16 @@ func NewPCTransport(params PCTransportParams) (*PCTransport, error) {
 		// and reject any IPv4 remote candidates advertised by the server.
 		se.SetIPFilter(isIPv6)
 		se.SetRemoteIPFilter(isIPv6)
+	}
+	if params.Warp {
+		// WARP = SPED (DTLS records carried inside ICE/STUN) + SCTP SNAP (SCTP
+		// INIT declared in the SDP). Only available with the livekit warp Pion
+		// forks; engages only when the SFU also has enable_warp.
+		logger.Infow("warp: client requested on peer connection, enabling SPED+SCTP SNAP", "warp", true)
+		se.EnableSped(true)
+		se.EnableSctpSnap(true)
+	} else {
+		logger.Infow("warp: client did NOT request on peer connection", "warp", false)
 	}
 	lf := pionlogger.NewLoggerFactory(logger)
 	if lf != nil {
