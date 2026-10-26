@@ -743,7 +743,9 @@ func TestResume(t *testing.T) {
 	audioTrackName := "audio_of_pub1"
 	var trackLock sync.Mutex
 	var trackReceived, subReconnected atomic.Bool
+	var stateAtSignalReconnecting atomic.String
 	var subTrack *webrtc.TrackRemote
+	var sub *Room
 	subCB := &RoomCallback{
 		ParticipantCallback: ParticipantCallback{
 			OnTrackSubscribed: func(track *webrtc.TrackRemote, publication *RemoteTrackPublication, rp *RemoteParticipant) {
@@ -756,19 +758,15 @@ func TestResume(t *testing.T) {
 				trackLock.Unlock()
 			},
 		},
+		OnSignalReconnecting: func() {
+			stateAtSignalReconnecting.Store(string(sub.ConnectionState()))
+		},
 		OnReconnected: func() {
 			subReconnected.Store(true)
 		},
 	}
-	sub, err := createAgent(t.Name(), subCB, "subscriber")
+	sub, err = createAgent(t.Name(), subCB, "subscriber")
 	require.NoError(t, err)
-
-	subCB.OnReconnecting = func() {
-		require.Equal(t, ConnectionStateReconnecting, sub.ConnectionState())
-	}
-	subCB.OnReconnected = func() {
-		require.Equal(t, ConnectionStateConnected, sub.ConnectionState())
-	}
 
 	localPub := pubNullTrack(t, pub, audioTrackName, webrtc.RTPCodecCapability{
 		MimeType:  webrtc.MimeTypeOpus,
@@ -799,6 +797,7 @@ func TestResume(t *testing.T) {
 
 	sub.Simulate(SimulateSignalReconnect)
 	require.Eventually(t, func() bool { return subReconnected.Load() }, 5*time.Second, 100*time.Millisecond)
+	require.Equal(t, string(ConnectionStateSignalReconnecting), stateAtSignalReconnecting.Load())
 
 	// confirm track is still working after resume
 	exitConsume.Store(true)
@@ -834,7 +833,7 @@ func TestForceTLS(t *testing.T) {
 	pub.LocalParticipant.PublishDataPacket(UserData([]byte("test")), WithDataPublishReliable(true))
 
 	pub.Simulate(SimulateForceTLS)
-	require.Eventually(t, func() bool { return reconnected.Load() && pub.engine.ensurePublisherConnected(true) == nil }, 15*time.Second, 100*time.Millisecond)
+	require.Eventually(t, func() bool { return reconnected.Load() && pub.engine.ensurePublisherConnected(context.Background(), true) == nil }, 15*time.Second, 100*time.Millisecond)
 
 	pub.log.Infow("reconnected")
 
@@ -975,6 +974,36 @@ func TestLimitPayloadSize(t *testing.T) {
 	require.ErrorIs(t, localTrack.WriteRTP(&rtpPkt), interceptor.ErrPayloadSizeTooLarge)
 
 	pub.Disconnect()
+}
+
+// OnProgress reports the fraction of the stream written so far, so the
+// count carries over between Write calls and ends at 1.
+func TestStreamTextProgressAcrossWrites(t *testing.T) {
+	pub, err := createAgent(t.Name(), nil, "publisher")
+	require.NoError(t, err)
+	defer pub.Disconnect()
+
+	part := strings.Repeat("a", STREAM_CHUNK_SIZE+100)
+	var progress []float64
+	writer := pub.LocalParticipant.StreamText(StreamTextOptions{
+		TotalSize:  uint64(2 * len(part)),
+		OnProgress: func(p float64) { progress = append(progress, p) },
+	})
+	defer writer.Close()
+
+	done := make(chan struct{})
+	onDone := func() { close(done) }
+	writer.Write(part, nil)
+	writer.Write(part, &onDone)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("write did not finish")
+	}
+
+	require.Len(t, progress, 4)
+	require.IsIncreasing(t, progress)
+	require.Equal(t, 1.0, progress[3])
 }
 
 // A plain video publish must come back with a mime type on its TrackInfo. The
@@ -1247,20 +1276,20 @@ func TestDynacastRepublish(t *testing.T) {
 		livekit.VideoQuality_HIGH:   simTracks[2],
 	}
 
-	// OnReconnected fires right after OnRestarted -> republishTracks (which resets
-	// the disabled flags) and before the new SFU issues its own dynacast update.
-	// Snapshot the flags here so the "re-enabled" assertion is race-free against a
-	// later server update that could re-disable unwatched layers.
 	var reconnected, allEnabledAfterRepublish atomic.Bool
 	pubCB := &RoomCallback{
-		OnReconnected: func() {
-			allEnabled := true
-			for _, tr := range simTracks {
-				if tr.disabled.Load() {
-					allEnabled = false
+		ParticipantCallback: ParticipantCallback{
+			OnLocalTrackPublished: func(*LocalTrackPublication, *LocalParticipant) {
+				allEnabled := true
+				for _, tr := range simTracks {
+					if tr.disabled.Load() {
+						allEnabled = false
+					}
 				}
-			}
-			allEnabledAfterRepublish.Store(allEnabled)
+				allEnabledAfterRepublish.Store(allEnabled)
+			},
+		},
+		OnReconnected: func() {
 			reconnected.Store(true)
 		},
 	}
@@ -1305,13 +1334,12 @@ func TestDynacastRepublish(t *testing.T) {
 	// (2) re-publish reset via a full reconnect: OnRestarted -> republishTracks
 	// re-publishes these same tracks, which must clear the disabled flags.
 	reconnected.Store(false)
+	allEnabledAfterRepublish.Store(false)
 	pub.Simulate(SimulateNodeFailure)
 	require.Eventually(t, func() bool {
 		return reconnected.Load()
 	}, 20*time.Second, 100*time.Millisecond, "publisher should complete a full reconnect")
 
-	// re-publishing the (previously dynacast-disabled) tracks reset every layer's
-	// disabled flag to false, captured at reconnect time.
 	require.True(t, allEnabledAfterRepublish.Load(), "re-published layers must reset disabled to false")
 
 	// end-to-end: video RTP resumes after the re-publish

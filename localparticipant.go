@@ -30,6 +30,7 @@ import (
 
 	"github.com/livekit/protocol/livekit"
 	protoLogger "github.com/livekit/protocol/logger"
+	"github.com/livekit/server-sdk-go/v2/internal/datatrack"
 )
 
 const (
@@ -39,6 +40,7 @@ const (
 type LocalParticipant struct {
 	baseParticipant
 	engine                 *RTCEngine
+	dataTracks             *datatrack.LocalManager
 	subscriptionPermission *livekit.SubscriptionPermission
 	serverInfo             *livekit.ServerInfo
 
@@ -47,13 +49,15 @@ type LocalParticipant struct {
 }
 
 func newLocalParticipant(engine *RTCEngine, roomcallback *RoomCallback, serverInfo *livekit.ServerInfo, log protoLogger.Logger) *LocalParticipant {
-	return &LocalParticipant{
+	p := &LocalParticipant{
 		baseParticipant:     *newBaseParticipant(roomcallback, log.WithValues("isLocal", true)),
 		engine:              engine,
 		serverInfo:          serverInfo,
 		rpcPendingAcks:      &sync.Map{},
 		rpcPendingResponses: &sync.Map{},
 	}
+	p.dataTracks = datatrack.NewLocalManager(datatrack.LocalManagerParams{Transport: localDataTrackTransport{engine: engine}, Encryptor: engine.dataTrackEncryptor, Logger: p.log})
+	return p
 }
 
 func (p *LocalParticipant) prepareTrackPublication(track webrtc.TrackLocal, opts *TrackPublicationOptions, pubOpts ...LocalTrackPublishOption) (*LocalTrackPublication, *livekit.AddTrackRequest, error) {
@@ -316,6 +320,7 @@ func (p *LocalParticipant) prepareSimulcastTrackPublication(tracks []*LocalTrack
 		Width:                 mainTrack.videoLayer.Width,
 		Height:                mainTrack.videoLayer.Height,
 		Layers:                layers,
+		Encryption:            opts.Encryption,
 		PacketTrailerFeatures: packetTrailerFeaturesFromOpts(opts),
 		SimulcastCodecs: []*livekit.SimulcastCodec{
 			{
@@ -326,7 +331,15 @@ func (p *LocalParticipant) prepareSimulcastTrackPublication(tracks []*LocalTrack
 			},
 		},
 	}
-	if len(pubOptions.backupCodecTracks) > 0 {
+
+	withBackupCodec := len(pubOptions.backupCodecTracks) > 0
+	if withBackupCodec && req.Encryption != livekit.Encryption_NONE {
+		// TODO: support e2ee for backup codecs
+		p.log.Warnw("backup codec publication with encryption is not supported, ignoring backup codec", nil)
+		withBackupCodec = false
+	}
+
+	if withBackupCodec {
 		for _, track := range pubOptions.backupCodecTracks {
 			// disable dynacast on a re-publication
 			track.setDisabled(false)
@@ -1197,4 +1210,5 @@ func (p *LocalParticipant) SetLogger(log protoLogger.Logger) {
 		pub.SetLogger(p.log)
 		return true
 	})
+	p.dataTracks.SetLogger(p.log)
 }
