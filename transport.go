@@ -234,8 +234,11 @@ func NewPCTransport(params PCTransportParams) (*PCTransport, error) {
 		// WARP = SPED (DTLS records carried inside ICE/STUN) + SCTP SNAP (SCTP
 		// INIT declared in the SDP). Only available with the livekit warp Pion
 		// forks; engages only when the SFU also has enable_warp.
+		logger.Infow("warp: client requested on peer connection, enabling SPED+SCTP SNAP", "warp", true)
 		se.EnableSped(true)
 		se.EnableSctpSnap(true)
+	} else {
+		logger.Infow("warp: client did NOT request on peer connection", "warp", false)
 	}
 	lf := pionlogger.NewLoggerFactory(logger)
 	if lf != nil {
