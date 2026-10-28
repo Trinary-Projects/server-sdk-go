@@ -261,6 +261,10 @@ func (e *RTCEngine) join(
 			err              error
 			addTrackRequests []*livekit.AddTrackRequest
 		)
+		// WARP connect-time phase instrumentation: attempt start -> publisher
+		// offer built -> signal join -> ICE/DTLS connected. Emitted on success
+		// below as a single parsable warp_connect_phases line for dashboarding.
+		phaseAttemptStart := time.Now()
 		if e.signalling.PublishInJoin() {
 			e.pclock.Lock()
 
@@ -303,6 +307,8 @@ func (e *RTCEngine) join(
 			return err
 		}
 
+		phaseOfferDone := time.Now()
+
 		// WithTimeout is already bounded by attempt.ctx, so the caller's deadline
 		// (if any) is still honored.
 		joinCtx, joinCtxCancel := context.WithTimeout(attempt.ctx, connectTimeout)
@@ -340,6 +346,8 @@ func (e *RTCEngine) join(
 			continue
 		}
 
+		phaseSignalDone := time.Now()
+
 		// use left over time after signal transport connection to wait for peer connection to establish
 		timeout := time.Duration(0)
 		if deadline, ok := joinCtx.Deadline(); ok {
@@ -352,6 +360,15 @@ func (e *RTCEngine) join(
 			e.log.Infow("waiting for connection establishment failed", "error", err, "attempt", attempt, "connParams", connParams, "timeout", timeout)
 			continue
 		}
+
+		phaseIceDone := time.Now()
+		e.log.Infow("warp_connect_phases",
+			"offer_ms", phaseOfferDone.Sub(phaseAttemptStart).Milliseconds(),
+			"signal_ms", phaseSignalDone.Sub(phaseOfferDone).Milliseconds(),
+			"ice_ms", phaseIceDone.Sub(phaseSignalDone).Milliseconds(),
+			"total_ms", phaseIceDone.Sub(phaseAttemptStart).Milliseconds(),
+			"region", attempt.region.Url,
+		)
 
 		e.connectionManager.setConnected(attempt.region)
 		return nil
